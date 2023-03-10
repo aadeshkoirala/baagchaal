@@ -14,7 +14,7 @@ class Board:
     ]
     def_board = [
         [0, 0, 0, 0, 0],
-        [0, 2, 0, 0, 0],
+        [0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0]
@@ -27,6 +27,8 @@ class Board:
         [0, 1, 0, 1, 0],
         [1, 0, 1, 0, 1]
     ]
+
+    GOATS_READY_TO_MOVE = True
 
     # 0 - EMPTY
     # 1 - TIGER
@@ -45,7 +47,7 @@ class Board:
         # CURRENT PLAYER (USUALLY THE GOAT)
         self.__current_player__ = 2
 
-    def __is_legal_move__(self, pos_1, pos_2):
+    def __is_legal_tiger_move__(self, pos_1, pos_2):
         # ALWAYS AN INVALID MOVE IF THE DESTINATION SQUARE IS NOT EMPTY
         if self.__board__[pos_2[0], pos_2[1]] != 0:
             return False
@@ -73,12 +75,26 @@ class Board:
                     return False
         return False
 
-    def __is_legal_placement__(self, pos):
+    def __is_legal_goat_placement__(self, pos):
         # GOATS ONLY GO ON EMPTY SQUARES
         if self.__board__[pos[0], pos[1]] == 0:
             return True
         else:
             return False
+
+    def __is_legal_goat_move__(self, pos_origin, pos_dest):
+        # ALREADY FALSE IF THE DESTINATION POINT IS NOT VACANT
+        if self.__board__[pos_dest[0], pos_dest[1]] != 0:
+            return False
+
+        # ALSO FALSE IF THERE ARE STILL GOATS THAT CAN BE PLACED
+        if self.__goats_remaining__ > 0:
+            return False
+
+        # THE ONLY OTHER RESTRICTION IS THAT IT SHOULD BE AT A UNIT DISTANCE
+        displacement = find_distance(pos_origin, pos_dest)
+        if equal(displacement, 1):
+            return True
 
     @staticmethod
     def __movement_in_legal_diagonal__(pos_1, pos_2):
@@ -108,7 +124,7 @@ class Board:
             legal_moves_for_current_tiger = []
             for i in range(self.__board__.shape[0]):
                 for j in range(self.__board__.shape[1]):
-                    if self.__is_legal_move__(tiger_pos, [i, j]):
+                    if self.__is_legal_tiger_move__(tiger_pos, [i, j]):
                         legal_moves_for_current_tiger.append([i, j])
             legal_moves.append(legal_moves_for_current_tiger)
         return legal_moves
@@ -117,15 +133,32 @@ class Board:
         self.__current_player__ = 1 if self.__current_player__ == 2 else 2
 
     def get_legal_goat_moves(self):
-        legal_moves = []
-        for i in range(self.__board__.shape[0]):
-            for j in range(self.__board__.shape[1]):
-                if self.__is_legal_placement__([i, j]):
-                    legal_moves.append([i, j])
+        legal_moves = {}
+        if self.__goats_remaining__ > 0:
+            legal_moves["placements"] = []
+            for i in range(self.__board__.shape[0]):
+                for j in range(self.__board__.shape[1]):
+                    if self.__is_legal_goat_placement__([i, j]):
+                        legal_moves["placements"].append([i, j])
+        else:
+
+            moves_filter = lambda x: (x[0] > 0 and x[0] < self.__board__.shape[0]) and (x[1] > 0 and x[1] < self.__board__.shape[1])
+
+            for i in range(self.__board__.shape[0]):
+                for j in range(self.__board__.shape[1]):
+                    if self.__board__[i, j] == 2:
+                        possible_moves_for_this_goat = []
+                        only_possible_dest = [[i - 1, j - 1], [i - 1, j], [i - 1, j + 1], [i, j - 1], [i, j + 1],
+                                              [i + 1, j - 1], [i + 1, j + 1]]
+                        only_possible_dest = list(filter(moves_filter, only_possible_dest))
+                        for dest_move in only_possible_dest:
+                            if self.__is_legal_goat_move__([i, j], dest_move):
+                                possible_moves_for_this_goat.append(dest_move)
+                        legal_moves[tuple([i, j])] = possible_moves_for_this_goat
         return legal_moves
 
     def move_tiger(self, pos_1, pos_2):
-        if self.__is_legal_move__(pos_1, pos_2):
+        if self.__is_legal_tiger_move__(pos_1, pos_2):
             for idx in range(len(self.__tigers_pos__)):
                 pos = self.__tigers_pos__[idx]
                 if pos == pos_1:
@@ -144,7 +177,7 @@ class Board:
             return False
 
     def place_goat(self, pos):
-        if self.__is_legal_placement__(pos) and self.__goats_remaining__ > 0:
+        if self.__is_legal_goat_placement__(pos) and self.__goats_remaining__ > 0:
             self.__board__[pos[0], pos[1]] = 2
             self.__goats_remaining__ -= 1
 
@@ -153,5 +186,34 @@ class Board:
         else:
             return False
 
+    def make_goat_move(self, pos1, pos2):
+        if self.__goats_remaining__ < 0:
+            if self.__is_legal_goat_move__(pos1, pos2):
+                self.__board__[pos1[0], pos1[1]] = 0
+                self.__board__[pos2[0], pos2[1]] = 2
+
+            self.__switch_player__()
+            return True
+        return False
+
+    def goat_status(self):
+        if self.__goats_remaining__ < 0:
+            return self.GOATS_READY_TO_MOVE
+        else:
+            return not self.GOATS_READY_TO_MOVE
+
     def get_current_player(self):
         return self.__current_player__
+
+    def make_move(self, arg1, arg2=None):
+        """
+        The function to make a tiger or goat move on the board
+        The preferred method for making a move
+        :param arg1: Pos1
+        :param arg2: Pos2, None if it's a goat move
+        :return:
+        """
+        if self.__current_player__ == 1:
+            return self.move_tiger(arg1, arg2)
+        else:
+            return self.place_goat(arg1)
